@@ -74,6 +74,20 @@ public class FinancialManager {
         updateFollowingTransactionsBalance(financialTransaction);
     }
 
+    public FinancialTransaction updateTransaction(Long id, FinancialAccount financialAccount, LocalDateTime date , BigDecimal value) {
+
+        FinancialTransaction financialTransaction = financialTransactionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Financial transaction not found"));
+
+        deleteTransaction(id);
+
+        if (financialTransaction.getType().equals(FinancialTransactionType.BALANCE)) {
+            return createBalanceTransaction(date, value, financialAccount);
+        } else{
+            return createTransaction(financialTransaction.getType(), date, value, financialAccount);
+        }
+    }
+
     private FinancialTransaction createTransaction(FinancialTransactionType type,
                                                    LocalDateTime date,
                                                    BigDecimal value,
