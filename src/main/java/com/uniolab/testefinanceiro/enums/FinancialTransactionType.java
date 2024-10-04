@@ -1,5 +1,5 @@
 package com.uniolab.testefinanceiro.enums;
 
-public enum FinancialEntryType {
+public enum FinancialTransactionType {
     IN, OUT, BALANCE;
 }

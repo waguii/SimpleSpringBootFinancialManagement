@@ -1,17 +1,16 @@
 package com.uniolab.testefinanceiro.service;
 
-import com.uniolab.testefinanceiro.enums.FinancialEntryType;
+import com.uniolab.testefinanceiro.enums.FinancialTransactionType;
 import com.uniolab.testefinanceiro.model.FinancialAccount;
-import com.uniolab.testefinanceiro.model.FinancialEntry;
-import com.uniolab.testefinanceiro.repository.FinancialAccountRepository;
-import com.uniolab.testefinanceiro.repository.FinancialEntryRepository;
+import com.uniolab.testefinanceiro.model.FinancialTransaction;
+import com.uniolab.testefinanceiro.model.FinancialTransactionBalance;
+import com.uniolab.testefinanceiro.repository.FinancialTransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Set;
 
 @Service
@@ -19,147 +18,126 @@ import java.util.Set;
 @Slf4j
 public class FinancialManager {
 
-    private final FinancialEntryRepository financialEntryRepository;
-    private final FinancialAccountRepository financialAccountRepository;
+    private final FinancialTransactionRepository financialTransactionRepository;
 
-    public FinancialEntry createEntry(FinancialEntryType type, LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
-
-        FinancialEntry financialEntry = new FinancialEntry();
-
-        financialEntry.setDate(date);
-        financialEntry.setType(type);
-        financialEntry.setDescription("TESTE");
-        financialEntry.setValue(value);
-        financialEntry.setFinancialAccount(financialAccount);
-        financialEntry.setRegistrationDate(LocalDateTime.now());
-
-        FinancialEntry result = financialEntryRepository.save(financialEntry);
-
-        log.info("Financial entry created: {}", result);
-
-        //update financial account balance
-        Set<FinancialEntry> balances = financialAccountRepository
-                .findByFinancialAccountAndDateAfterEqualAndType(financialAccount, date, FinancialEntryType.BALANCE);
-
-        if (balances.isEmpty()) {
-            updateFinancialAccountBalance(financialAccount, value, type);
-        }
-
-        return result;
+    public FinancialTransaction createInTransaction(LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
+        return createTransaction(FinancialTransactionType.IN, date, value, financialAccount);
     }
 
-    public FinancialEntry balance(LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
+    public FinancialTransaction createOutTransaction(LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
+        return createTransaction(FinancialTransactionType.OUT, date, value, financialAccount);
+    }
+
+    public FinancialTransaction createBalanceTransaction(LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
 
         LocalDateTime balanceDate = date.toLocalDate().atStartOfDay();
 
-        FinancialEntry financialEntry = new FinancialEntry();
+        //check if there is a balance transaction for the same day
+        Set<FinancialTransaction> balancesOfDay = financialTransactionRepository
+                .findByFinancialAccountAndDateEqualAndType(financialAccount.getId(), balanceDate, FinancialTransactionType.BALANCE);
 
-        financialEntry.setDate(balanceDate);
-        financialEntry.setType(FinancialEntryType.BALANCE);
-        financialEntry.setDescription("BALANCO");
-        financialEntry.setValue(value);
-        financialEntry.setFinancialAccount(financialAccount);
-        financialEntry.setRegistrationDate(LocalDateTime.now());
+        BigDecimal lastBalance = balancesOfDay.isEmpty() ? BigDecimal.ZERO : balancesOfDay.iterator().next().getValue();
 
-        FinancialEntry result = financialEntryRepository.save(financialEntry);
-        log.info("Financial entry created: {}", result);
+        //create the balance transaction
+        FinancialTransaction transaction = new FinancialTransaction();
+        transaction.setDate(balanceDate);
+        transaction.setType(FinancialTransactionType.BALANCE);
+        transaction.setValue(value);
+        transaction.setFinancialAccount(financialAccount);
+        transaction.setRegistrationDate(LocalDateTime.now());
 
-        //update financial account balance
-        Set<FinancialEntry> balances = financialAccountRepository
-                .findByFinancialAccountAndDateAfterAndType(financialAccount, balanceDate, FinancialEntryType.BALANCE);
+        //create the balance
+        FinancialTransactionBalance financialTransactionBalance = new FinancialTransactionBalance();
 
-        if (balances.isEmpty()) {
-            setFinancialAccountBalance(financialAccount, value);
-        }
+        financialTransactionBalance.setTransaction(transaction);
+        financialTransactionBalance.setRegistrationDate(LocalDateTime.now());
+        financialTransactionBalance.setValue(lastBalance.add(value));
+        financialTransactionBalance.setValueChange(value);
+
+        transaction.setBalance(financialTransactionBalance);
+
+        FinancialTransaction result = financialTransactionRepository.save(transaction);
+
+        log.info("Financial transaction created: {}", result);
+
+        //we need to update the following transactions balance
+        updateFollowingTransactionsBalance(result);
 
         return result;
     }
 
-//    public BigDecimal calculateCurrentBalance(String accountId) {
-//        FinancialAccount account = accountRepository.findById(accountId)
-//                .orElseThrow(() -> new EntityNotFoundException("Conta não encontrada"));
-//
-//        // Obtém o último balanço registrado para a conta
-//        Balance lastBalance = balanceRepository.findFirstByAccountOrderByDateDesc(account)
-//                .orElse(new Balance(BigDecimal.ZERO, LocalDate.now().minusDays(1), account));
-//
-//        // Calcula o saldo somando as entradas e subtraindo as saídas após o último balanço
-//        BigDecimal currentBalance = lastBalance.getValue();
-//        List<FinancialEntry> entriesAfterLastBalance = entryRepository.findByAccountAndDateAfter(account, lastBalance.getDate());
-//
-//        for (FinancialEntry entry : entriesAfterLastBalance) {
-//            if (entry.getValue().compareTo(BigDecimal.ZERO) > 0) {
-//                currentBalance = currentBalance.add(entry.getValue());
-//            } else {
-//                currentBalance = currentBalance.subtract(entry.getValue().abs());
-//            }
-//        }
-//
-//        return currentBalance;
-//    }
+    public void deleteTransaction(Long id) {
+        FinancialTransaction financialTransaction = financialTransactionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Financial transaction not found"));
 
-    private void setFinancialAccountBalance(FinancialAccount financialAccount, BigDecimal value) {
-        financialAccount.setBalance(value);
-        financialAccountRepository.save(financialAccount);
-        log.info("Financial account balance updated: {}", financialAccount);
+        financialTransactionRepository.deleteById(id);
+        updateFollowingTransactionsBalance(financialTransaction);
     }
 
-    private void updateFinancialAccountBalance(FinancialAccount financialAccount, BigDecimal value, FinancialEntryType type) {
-        BigDecimal balance = financialAccount.getBalance();
-        balance = type == FinancialEntryType.IN ? balance.add(value) : balance.subtract(value);
-        financialAccount.setBalance(balance);
-        financialAccountRepository.save(financialAccount);
-        log.info("Financial account balance updated: {}", financialAccount);
+    private FinancialTransaction createTransaction(FinancialTransactionType type,
+                                                   LocalDateTime date,
+                                                   BigDecimal value,
+                                                   FinancialAccount financialAccount) {
+        FinancialTransaction transaction = new FinancialTransaction();
+
+        transaction.setDate(date);
+        transaction.setType(type);
+        transaction.setValue(value);
+        transaction.setFinancialAccount(financialAccount);
+        transaction.setRegistrationDate(LocalDateTime.now());
+
+        //precisa encontrar a ultima transacao realizada antes dessa para ter acesso ao balanco
+        FinancialTransaction previousTransaction = financialTransactionRepository
+                .findPreviousTransactionByDateAndFinancialAccount(transaction.getDate(), transaction.getFinancialAccount().getId())
+                .orElse(null);
+
+        BigDecimal lastBalance = previousTransaction != null ? previousTransaction.getBalance().getValue() : BigDecimal.ZERO;
+
+        //cria o balanco da transacao
+        FinancialTransactionBalance financialTransactionBalance = new FinancialTransactionBalance();
+
+        BigDecimal newBalance = type == FinancialTransactionType.IN ? lastBalance.add(value) : lastBalance.subtract(value);
+        BigDecimal change = type == FinancialTransactionType.IN ? value : value.negate();
+
+        financialTransactionBalance.setTransaction(transaction);
+        financialTransactionBalance.setRegistrationDate(LocalDateTime.now());
+        financialTransactionBalance.setValue(newBalance);
+        financialTransactionBalance.setValueChange(change);
+
+        transaction.setBalance(financialTransactionBalance);
+
+        FinancialTransaction result = financialTransactionRepository.save(transaction);
+
+        log.info("Financial transaction created: {}", result);
+
+        //we need to update the following transactions balance
+        updateFollowingTransactionsBalance(result);
+
+        return result;
     }
 
-    public void deleteEntry(Long id) {
+    private void updateFollowingTransactionsBalance(FinancialTransaction baseTransaction) {
+        //find all transactions after the current one
+        Set<FinancialTransaction> futuresTransactions = financialTransactionRepository
+                .findNextTransactionsByDateAndFinancialAccount(
+                        baseTransaction.getDate(),
+                        baseTransaction.getFinancialAccount().getId(),
+                        baseTransaction.getId());
 
-        FinancialEntry financialEntry = financialEntryRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Financial entry not found"));
+        BigDecimal currentBalance = baseTransaction.getBalance().getValue();
 
-        Set<FinancialEntry> futureBalances = null;
-        if (financialEntry.getType() == FinancialEntryType.BALANCE) {
-            futureBalances = financialAccountRepository
-                    .findNextEntriesByFinancialAccountAndDatesAndType(
-                            financialEntry.getFinancialAccount(),
-                            financialEntry.getDate(),
-                            financialEntry.getRegistrationDate(),
-                            FinancialEntryType.BALANCE);
-        } else {
-            //fazer a query levando em considera;áo que eh uma entrada normal in ou out
-            //update financial account balance
-            futureBalances = financialAccountRepository
-                    .findByFinancialAccountAndDateAfterEqualAndType(
-                            financialEntry.getFinancialAccount(),
-                            financialEntry.getDate(),
-                            FinancialEntryType.BALANCE);
-        }
+        for (FinancialTransaction futureTransaction : futuresTransactions) {
+            if (futureTransaction.getType().equals(FinancialTransactionType.BALANCE)) break;
 
-        //TODO: colocar a remoção aqui
-        financialEntryRepository.deleteById(id);
+            BigDecimal newBalance = futureTransaction.getType() == FinancialTransactionType.IN
+                    ? currentBalance.add(futureTransaction.getValue())
+                    : currentBalance.subtract(futureTransaction.getValue());
 
-        if (futureBalances.isEmpty()) {
-            //teoricamente nao precisa desse id aqui pq essa entrada ja foi removida no deleteById que ta comentado acima
-            FinancialEntry lastBalance = financialEntryRepository
-                    .findLastBalance(financialEntry.getFinancialAccount().getId(),
-                            financialEntry.getDate(),
-                            financialEntry.getId()).orElse(null);
-
-            LocalDateTime sourceDate = lastBalance != null ? lastBalance.getDate() : financialEntry.getDate();
-
-            Set<FinancialEntry> nextEntries = financialEntryRepository
-                    .findInOutAccountEntriesAfter(financialEntry.getFinancialAccount().getId(), sourceDate);
-
-            log.info("Next entries: {}", nextEntries);
-
-            BigDecimal updatedBalance = lastBalance != null ? lastBalance.getValue() : BigDecimal.ZERO;
-            for (FinancialEntry nextEntry : nextEntries) {
-                BigDecimal nextValue = nextEntry.getValue();
-                FinancialEntryType nextType = nextEntry.getType();
-                updatedBalance = nextType == FinancialEntryType.IN ? updatedBalance.add(nextValue) : updatedBalance.subtract(nextValue);
-            }
-
-            setFinancialAccountBalance(financialEntry.getFinancialAccount(), updatedBalance);
+            futureTransaction.getBalance().setValue(newBalance);
+            financialTransactionRepository.save(futureTransaction);
+            currentBalance = newBalance;
         }
 
     }
+
 }

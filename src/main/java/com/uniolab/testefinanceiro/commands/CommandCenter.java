@@ -1,9 +1,9 @@
 package com.uniolab.testefinanceiro.commands;
 
-import com.uniolab.testefinanceiro.enums.FinancialEntryType;
+import com.uniolab.testefinanceiro.enums.FinancialTransactionType;
 import com.uniolab.testefinanceiro.model.FinancialAccount;
 import com.uniolab.testefinanceiro.repository.FinancialAccountRepository;
-import com.uniolab.testefinanceiro.repository.FinancialEntryRepository;
+import com.uniolab.testefinanceiro.repository.FinancialTransactionRepository;
 import com.uniolab.testefinanceiro.service.FinancialAccountService;
 import com.uniolab.testefinanceiro.service.FinancialManager;
 import lombok.RequiredArgsConstructor;
@@ -22,13 +22,13 @@ import java.time.format.DateTimeFormatter;
 public class CommandCenter {
 
     private final FinancialAccountRepository financialAccountRepository;
-    private final FinancialEntryRepository financialEntryRepository;
+    private final FinancialTransactionRepository financialTransactionRepository;
     private final FinancialAccountService financialAccountService;
     private final FinancialManager financialManager;
 
     @ShellMethod(key = "init-bd")
     public void initializeDatabase() {
-        if (financialAccountRepository.count() > 0 || financialEntryRepository.count() > 0) {
+        if (financialAccountRepository.count() > 0 || financialTransactionRepository.count() > 0) {
             log.info("Database already initialized");
             return;
         }
@@ -37,7 +37,6 @@ public class CommandCenter {
         FinancialAccount financialAccount = new FinancialAccount();
 
         financialAccount.setName("CAIXA");
-        financialAccount.setBalance(BigDecimal.ZERO);
 
         financialAccountService.create(financialAccount);
 
@@ -46,7 +45,7 @@ public class CommandCenter {
 
     @ShellMethod(key = "add-financial-entry")
     public void add(@ShellOption String financialAccountName,
-                    @ShellOption FinancialEntryType type,
+                    @ShellOption FinancialTransactionType type,
                     @ShellOption String date,
                     @ShellOption BigDecimal value) {
 
@@ -58,12 +57,16 @@ public class CommandCenter {
         FinancialAccount financialAccount = financialAccountRepository
                 .findByName(financialAccountName).orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
-        financialManager.createEntry(type, localDateTime, value, financialAccount);
+        if (type.equals(FinancialTransactionType.OUT)) {
+            financialManager.createOutTransaction(localDateTime, value, financialAccount);
+        }else{
+            financialManager.createInTransaction(localDateTime , value, financialAccount);
+        }
     }
 
     @ShellMethod(key = "del-financial-entry")
     public void delete(@ShellOption Long id) {
-        financialManager.deleteEntry(id);
+        financialManager.deleteTransaction(id);
     }
 
     @ShellMethod(key = "balance-financial-account")
@@ -79,7 +82,7 @@ public class CommandCenter {
         FinancialAccount financialAccount = financialAccountRepository
                 .findByName(financialAccountName).orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
-        financialManager.balance(localDateTime, value, financialAccount);
+        financialManager.createBalanceTransaction(localDateTime, value, financialAccount);
     }
 
 
