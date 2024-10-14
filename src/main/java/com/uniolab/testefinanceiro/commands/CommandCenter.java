@@ -57,11 +57,25 @@ public class CommandCenter {
         FinancialAccount financialAccount = financialAccountRepository
                 .findByName(financialAccountName).orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
-        if (type.equals(FinancialTransactionType.OUT)) {
-            financialManager.createOutTransaction(localDateTime, value, financialAccount);
-        }else{
-            financialManager.createInTransaction(localDateTime , value, financialAccount);
-        }
+        financialManager.createTransaction(type, localDateTime, value, financialAccount);
+    }
+
+    @ShellMethod(key = "edit-financial-entry")
+    public void update(@ShellOption Long id,
+                       @ShellOption String financialAccountName,
+                       @ShellOption FinancialTransactionType type,
+                       @ShellOption String date,
+                       @ShellOption BigDecimal value) {
+
+        //transforms date string into a date object
+        //format dd/MM/yyyy HH:mm:ss
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
+        LocalDateTime localDateTime = LocalDateTime.parse(date, formatter);
+
+        FinancialAccount financialAccount = financialAccountRepository
+                .findByName(financialAccountName).orElseThrow(() -> new IllegalArgumentException("Account not found"));
+
+        financialManager.updateTransaction(id, type, localDateTime, value, financialAccount);
     }
 
     @ShellMethod(key = "del-financial-entry")

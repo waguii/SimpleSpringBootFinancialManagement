@@ -20,14 +20,6 @@ public class FinancialManager {
 
     private final FinancialTransactionRepository financialTransactionRepository;
 
-    public FinancialTransaction createInTransaction(LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
-        return createTransaction(FinancialTransactionType.IN, date, value, financialAccount);
-    }
-
-    public FinancialTransaction createOutTransaction(LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
-        return createTransaction(FinancialTransactionType.OUT, date, value, financialAccount);
-    }
-
     public FinancialTransaction createBalanceTransaction(LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
 
         LocalDateTime balanceDate = date.toLocalDate().atStartOfDay();
@@ -74,7 +66,7 @@ public class FinancialManager {
         updateFollowingTransactionsBalance(financialTransaction);
     }
 
-    private FinancialTransaction createTransaction(FinancialTransactionType type,
+    public FinancialTransaction createTransaction(FinancialTransactionType type,
                                                    LocalDateTime date,
                                                    BigDecimal value,
                                                    FinancialAccount financialAccount) {
@@ -114,6 +106,20 @@ public class FinancialManager {
         updateFollowingTransactionsBalance(result);
 
         return result;
+    }
+
+    public FinancialTransaction updateTransaction(Long id, FinancialTransactionType type, LocalDateTime date, BigDecimal value, FinancialAccount financialAccount) {
+
+        FinancialTransaction transaction = financialTransactionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Financial transaction not found"));
+
+        deleteTransaction(transaction.getId());
+
+        if (type.equals(FinancialTransactionType.BALANCE)) {
+            return createBalanceTransaction(date, value, financialAccount);
+        }
+
+        return createTransaction(type, date, value, financialAccount);
     }
 
     private void updateFollowingTransactionsBalance(FinancialTransaction baseTransaction) {
